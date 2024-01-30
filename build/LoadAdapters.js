@@ -36,68 +36,45 @@ exports.LoadAdapters = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 class LoadAdapters {
-    // Maybe make this a singleton for safety?
-    constructor() {
-        this.adapterRepository = [];
-    }
-    getAdapter(adapterIndex /* THIS IS AN EXAMPLE ONLY!!! DO-NOT-DO-THIS */) {
-        // TODO: Implement some sort of Adapter lookup here!
-        return this.adapterRepository[adapterIndex];
-    }
-    reloadAdapters() {
-        return __awaiter(this, void 0, void 0, function* () {
-            // TODO: Implement some sort of adapter reload logic but in a safe way!
-        });
+    constructor(baseDir = './src/adapters') {
+        this.baseDir = baseDir;
+        this.adapterStore = {};
+        this.loadAdapters();
     }
     loadAdapters() {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                const results = yield this._walk('./build/adapters');
-                for (let i = 0; i < results.length; i++) {
-                    if (!results[i].includes('.map')) {
-                        const dynamicallyImported = yield Promise.resolve(`${results[i]}`).then(s => __importStar(require(s)));
-                        console.debug(dynamicallyImported);
-                        if (dynamicallyImported) {
-                            this.adapterRepository.push(dynamicallyImported);
-                        }
+        fs.readdirSync(this.baseDir, { withFileTypes: true }).forEach(companyDir => {
+            if (companyDir.isDirectory()) {
+                const companyPath = path.join(this.baseDir, companyDir.name);
+                this.adapterStore[companyDir.name] = {};
+                fs.readdirSync(companyPath, { withFileTypes: true }).forEach(productDir => {
+                    if (productDir.isDirectory()) {
+                        const productPath = path.join(companyPath, productDir.name);
+                        this.adapterStore[companyDir.name][productDir.name] = {};
+                        fs.readdirSync(productPath, { withFileTypes: true }).forEach((versionDir) => __awaiter(this, void 0, void 0, function* () {
+                            if (versionDir.isDirectory()) {
+                                const versionPath = path.join(productPath, versionDir.name);
+                                const adapterPath = `${__dirname}/adapters/${companyDir.name}/${productDir.name}/${versionDir.name}/`;
+                                fs.readdir(adapterPath, (err, files) => {
+                                    files.forEach((file) => __awaiter(this, void 0, void 0, function* () {
+                                        console.log(file);
+                                        console.log("Current directory:", __dirname);
+                                        if (!file.includes('.map')) {
+                                            const withFileName = `${adapterPath}${file}`;
+                                            const AdapterClass = require(withFileName).default; // Assuming each version directory has a default export of the adapter class
+                                            this.adapterStore[companyDir.name][productDir.name][versionDir.name] = new AdapterClass();
+                                        }
+                                    }));
+                                });
+                            }
+                        }));
                     }
-                }
-            }
-            catch (err) {
-                console.error('Error loading adapters:', err);
+                });
             }
         });
     }
-    _walk(dir) {
-        return new Promise((resolve, reject) => {
-            fs.readdir(dir, (err, list) => {
-                if (err)
-                    return reject(err);
-                let results = [];
-                let pending = list.length;
-                if (!pending)
-                    return resolve(results);
-                list.forEach((file) => {
-                    file = path.resolve(dir, file);
-                    fs.stat(file, (err, stat) => {
-                        if (err)
-                            return reject(err);
-                        if (stat && stat.isDirectory()) {
-                            this._walk(file).then(res => {
-                                results = results.concat(res);
-                                if (!--pending)
-                                    resolve(results);
-                            }).catch(reject);
-                        }
-                        else {
-                            results.push(file);
-                            if (!--pending)
-                                resolve(results);
-                        }
-                    });
-                });
-            });
-        });
+    getAdapter(company, product, version) {
+        var _a, _b;
+        return ((_b = (_a = this.adapterStore[company]) === null || _a === void 0 ? void 0 : _a[product]) === null || _b === void 0 ? void 0 : _b[version]) || null;
     }
 }
 exports.LoadAdapters = LoadAdapters;

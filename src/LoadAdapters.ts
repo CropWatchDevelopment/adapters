@@ -1,65 +1,58 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { IAdapter } from './interfaces/Adapter.interface';
-import { IDatabaseStructure } from './interfaces/DatabaseStructure.interface';
 
-export class LoadAdapters {
-    adapterRepository: any[] = [];
-
-    // Maybe make this a singleton for safety?
-    constructor() {
-
-    }
-
-    public getAdapter(adapterIndex: number /* THIS IS AN EXAMPLE ONLY!!! DO-NOT-DO-THIS */): IAdapter<IDatabaseStructure> {
-        // TODO: Implement some sort of Adapter lookup here!
-        return this.adapterRepository[adapterIndex];
-    }
-
-    public async reloadAdapters() {
-        // TODO: Implement some sort of adapter reload logic but in a safe way!
-    }
-
-    public async loadAdapters() {
-        try {
-            const results = await this._walk('./build/adapters');
-            for (let i = 0; i < results.length; i++) {
-                if (!results[i].includes('.map')) {
-                    const dynamicallyImported = await import(results[i]) as IAdapter<IDatabaseStructure>;
-                    console.debug(dynamicallyImported);
-                    if (dynamicallyImported) {
-                        this.adapterRepository.push(dynamicallyImported);
-                    }
-                }
-            }
-        } catch (err) {
-            console.error('Error loading adapters:', err);
+interface AdapterStore {
+    [company: string]: {
+        [product: string]: {
+            [version: string]: IAdapter<any>
         }
     }
+}
 
-    private _walk(dir: string): Promise<string[]> {
-        return new Promise((resolve, reject) => {
-            fs.readdir(dir, (err, list) => {
-                if (err) return reject(err);
-                let results: string[] = [];
-                let pending = list.length;
-                if (!pending) return resolve(results);
-                list.forEach((file) => {
-                    file = path.resolve(dir, file);
-                    fs.stat(file, (err, stat) => {
-                        if (err) return reject(err);
-                        if (stat && stat.isDirectory()) {
-                            this._walk(file).then(res => {
-                                results = results.concat(res);
-                                if (!--pending) resolve(results);
-                            }).catch(reject);
-                        } else {
-                            results.push(file);
-                            if (!--pending) resolve(results);
-                        }
-                    });
+export class LoadAdapters {
+    private adapterStore: AdapterStore = {};
+
+    constructor(private baseDir: string = './src/adapters') {
+        this.loadAdapters();
+    }
+
+    private loadAdapters(): void {
+        fs.readdirSync(this.baseDir, { withFileTypes: true }).forEach(companyDir => {
+            if (companyDir.isDirectory()) {
+                const companyPath = path.join(this.baseDir, companyDir.name);
+                this.adapterStore[companyDir.name] = {};
+
+                fs.readdirSync(companyPath, { withFileTypes: true }).forEach(productDir => {
+                    if (productDir.isDirectory()) {
+                        const productPath = path.join(companyPath, productDir.name);
+                        this.adapterStore[companyDir.name][productDir.name] = {};
+
+                        fs.readdirSync(productPath, { withFileTypes: true }).forEach(async versionDir => {
+                            if (versionDir.isDirectory()) {
+                                const versionPath = path.join(productPath, versionDir.name);
+                                const adapterPath = `${__dirname}/adapters/${companyDir.name}/${productDir.name}/${versionDir.name}/`;
+                                fs.readdir(adapterPath, (err, files) => {
+                                    files.forEach(async file => {
+                                        console.log(file);
+                                        console.log("Current directory:", __dirname);
+                                        if (!file.includes('.map')) {
+                                            const withFileName = `${adapterPath}${file}`;
+                                            const AdapterClass = require(withFileName).default; // Assuming each version directory has a default export of the adapter class
+                                            this.adapterStore[companyDir.name][productDir.name][versionDir.name] = new AdapterClass();
+                                        }
+                                    });
+                                });
+
+                            }
+                        });
+                    }
                 });
-            });
+            }
         });
+    }
+
+    public getAdapter(company: string, product: string, version: string): IAdapter<any> | null {
+        return this.adapterStore[company]?.[product]?.[version] || null;
     }
 }

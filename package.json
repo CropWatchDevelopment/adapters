@@ -12,5 +12,10 @@
   "devDependencies": {
     "@types/node": "^20.11.7",
     "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.3",
+    "dotenv": "^16.4.1",
+    "mqtt": "^5.3.5"
   }
 }
